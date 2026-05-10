@@ -47,8 +47,7 @@ MODE="${1:-full}"
 [ -d "$DKMS_SRC" ] || die "DKMS source not found at $DKMS_SRC"
 [ -d "$ARCH_PATCHES" ] || die "Arch patches not found at $ARCH_PATCHES"
 
-for f in 0002-CFLAGS-Set-std-gnu17-for-all-compilation-flags.patch \
-         0003-Workaround-nv_vm_flags_-calling-GPL-only-code.patch \
+for f in 0003-Workaround-nv_vm_flags_-calling-GPL-only-code.patch \
          0004-kernel-open-nvidia-Use-new-timer-functions-for-6.15.patch \
          0005-kernel-nvidia-Fulfill-6.17-fb_create-contract.patch \
          0006-kernel-nvidia-use-new-helper-macros-and-post-removal-in_irq-for-6.19.patch; do
@@ -80,9 +79,14 @@ apply_patches() {
     # --------------------------------------------------------------
     log "=== Arch AUR patches (6.15–6.19 compat) ==="
 
-    log "  0002: -std=gnu17 for GCC 15"
-    patch -Np1 --no-backup-if-mismatch -d "$DKMS_SRC" \
-        < "$ARCH_PATCHES/0002-CFLAGS-Set-std-gnu17-for-all-compilation-flags.patch"
+    # 0002 as sed: The Arch patch doesn't apply cleanly to the Proxmox
+    # Kbuild (different context). Do the same changes via sed instead.
+    log "  0002 (sed): -std=gnu17 in Kbuild + conftest.sh"
+    # Kbuild: add -std=gnu17 before first EXTRA_CFLAGS include line
+    sed -i '/^EXTRA_CFLAGS += -I\$(src)\/common\/inc/i EXTRA_CFLAGS += -std=gnu17' "$DKMS_SRC/Kbuild"
+    # conftest.sh: add -std=gnu17 to test and build cflags
+    sed -i 's/TEST_CFLAGS="-E -M/TEST_CFLAGS="-std=gnu17 -E -M/' "$DKMS_SRC/conftest.sh"
+    sed -i 's/BASE_CFLAGS="-O2 -D__KERNEL__/BASE_CFLAGS="-std=gnu17 -O2 -D__KERNEL__/' "$DKMS_SRC/conftest.sh"
 
     log "  sed: EXTRA_CFLAGS → ccflags-y in Kbuild"
     sed -i 's/EXTRA_CFLAGS/ccflags-y/g' "$DKMS_SRC/Kbuild"
