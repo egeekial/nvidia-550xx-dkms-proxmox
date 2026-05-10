@@ -48,7 +48,6 @@ MODE="${1:-full}"
 [ -d "$ARCH_PATCHES" ] || die "Arch patches not found at $ARCH_PATCHES"
 
 for f in 0003-Workaround-nv_vm_flags_-calling-GPL-only-code.patch \
-         0004-kernel-open-nvidia-Use-new-timer-functions-for-6.15.patch \
          0005-kernel-nvidia-Fulfill-6.17-fb_create-contract.patch \
          0006-kernel-nvidia-use-new-helper-macros-and-post-removal-in_irq-for-6.19.patch; do
     [ -f "$ARCH_PATCHES/$f" ] || die "Missing Arch patch: $f"
@@ -95,9 +94,44 @@ apply_patches() {
     patch -Np1 --no-backup-if-mismatch -d "$DKMS_SRC" \
         < "$ARCH_PATCHES/0003-Workaround-nv_vm_flags_-calling-GPL-only-code.patch"
 
-    log "  0004: timer functions (del_timer_sync → timer_delete_sync)"
-    patch -Np2 --no-backup-if-mismatch -d "$DKMS_SRC" \
-        < "$ARCH_PATCHES/0004-kernel-open-nvidia-Use-new-timer-functions-for-6.15.patch"
+    # 0004 as sed: The Arch patch targets kernel-open/ which differs from
+    # the closed-source kernel/ tree in Proxmox. Apply the same API changes
+    # via sed. Both 6.17 and 7.0 are >= 6.15 so unconditional replacement
+    # is safe (timer_delete_sync exists since 6.2, hrtimer_setup since 6.12).
+    log "  0004 (sed): timer functions (del_timer_sync → timer_delete_sync)"
+
+    # Ensure linux/version.h is included in affected files
+    for f in nvidia-drm/nvidia-drm-os-interface.c \
+             nvidia-modeset/nvidia-modeset-linux.c \
+             nvidia/nv-nano-timer.c \
+             nvidia/nv.c; do
+        [ -f "$DKMS_SRC/$f" ] || continue
+        if ! grep -q '<linux/version.h>' "$DKMS_SRC/$f"; then
+            sed -i '1,/#include/{ /#include/a #include <linux/version.h>
+            }' "$DKMS_SRC/$f"
+        fi
+    done
+
+    # del_timer_sync → timer_delete_sync (same signature, direct rename)
+    find "$DKMS_SRC" -name '*.c' -exec grep -l 'del_timer_sync' {} + 2>/dev/null \
+        | while read -r f; do
+            sed -i 's/del_timer_sync/timer_delete_sync/g' "$f"
+            log "    replaced del_timer_sync in $(basename "$f")"
+        done
+
+    # hrtimer_init → hrtimer_setup (API changed: callback moved into init call)
+    # Old: hrtimer_init(&timer, clock, mode); timer.function = callback;
+    # New: hrtimer_setup(&timer, callback, clock, mode);
+    if [ -f "$DKMS_SRC/nvidia/nv-nano-timer.c" ]; then
+        perl -i -0777 -pe '
+            s/hrtimer_init\((&[^,]+),\s*([^,]+),\s*([^)]+)\);\s*\n\s*\S+\.function\s*=\s*([^;]+);/hrtimer_setup($1, $4,\n                  $2, $3);/g
+        ' "$DKMS_SRC/nvidia/nv-nano-timer.c"
+        if ! grep -q 'hrtimer_init' "$DKMS_SRC/nvidia/nv-nano-timer.c"; then
+            log "    replaced hrtimer_init in nv-nano-timer.c"
+        else
+            warn "    hrtimer_init may still exist in nv-nano-timer.c (check if it's behind a conftest guard)"
+        fi
+    fi
 
     log "  0005: DRM fb_create signature for 6.17+"
     patch -Np2 --no-backup-if-mismatch -d "$DKMS_SRC" \
