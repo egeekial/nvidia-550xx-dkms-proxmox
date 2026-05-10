@@ -186,6 +186,20 @@ apply_patches() {
     fi
     log "    conftest.sh patched"
 
+    # nvidia-dma-fence-helper.h: dma_fence_signal returns void in 7.0
+    sed -i 's/return dma_fence_signal(fence);/dma_fence_signal(fence);\n    return 0;/' \
+        "$DKMS_SRC/nvidia-drm/nvidia-dma-fence-helper.h"
+    sed -i 's/return dma_fence_signal_locked(fence);/dma_fence_signal_locked(fence);\n    return 0;/' \
+        "$DKMS_SRC/nvidia-drm/nvidia-dma-fence-helper.h"
+    log "    nvidia-dma-fence-helper.h patched"
+
+    # nvidia-drm-helper.h: .state → .new_state in DRM atomic macros
+    # Kernel 7.0 removed .state from __drm_crtcs_state / __drm_connnectors_state /
+    # __drm_planes_state; .new_state exists since kernel 4.12
+    sed -i 's/__i\]\.state, 1/__i].new_state, 1/g' \
+        "$DKMS_SRC/nvidia-drm/nvidia-drm-helper.h"
+    log "    nvidia-drm-helper.h patched"
+
     # --------------------------------------------------------------
     # Kernel 7.0-specific fixes (NOT in any Arch patch)
     # --------------------------------------------------------------
