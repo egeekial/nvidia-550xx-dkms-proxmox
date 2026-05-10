@@ -47,9 +47,7 @@ MODE="${1:-full}"
 [ -d "$DKMS_SRC" ] || die "DKMS source not found at $DKMS_SRC"
 [ -d "$ARCH_PATCHES" ] || die "Arch patches not found at $ARCH_PATCHES"
 
-for f in 0003-Workaround-nv_vm_flags_-calling-GPL-only-code.patch \
-         0005-kernel-nvidia-Fulfill-6.17-fb_create-contract.patch \
-         0006-kernel-nvidia-use-new-helper-macros-and-post-removal-in_irq-for-6.19.patch; do
+for f in 0003-Workaround-nv_vm_flags_-calling-GPL-only-code.patch; do
     [ -f "$ARCH_PATCHES/$f" ] || die "Missing Arch patch: $f"
 done
 
@@ -133,13 +131,60 @@ apply_patches() {
         fi
     fi
 
-    log "  0005: DRM fb_create signature for 6.17+"
-    patch -Np2 --no-backup-if-mismatch -d "$DKMS_SRC" \
-        < "$ARCH_PATCHES/0005-kernel-nvidia-Fulfill-6.17-fb_create-contract.patch"
+    # 0005 (skip): DRM fb_create changes already applied by Debian/Proxmox
+    log "  0005 (skip): fb_create already patched by Debian"
 
-    log "  0006: in_irq→in_hardirq, map_resource→map_phys, DRM helpers"
-    patch -Np2 --no-backup-if-mismatch -d "$DKMS_SRC" \
-        < "$ARCH_PATCHES/0006-kernel-nvidia-use-new-helper-macros-and-post-removal-in_irq-for-6.19.patch"
+    # 0006 (sed): targeted fixes from the Arch 0006 patch
+    log "  0006 (sed): in_irq→in_hardirq, map_resource→map_phys, NV_MEMDBG, drm_print, conftest"
+
+    # nv-time.h: add version.h, compat define, in_irq → in_hardirq
+    if ! grep -q '<linux/version.h>' "$DKMS_SRC/common/inc/nv-time.h"; then
+        sed -i '/#include <linux\/ktime.h>/a #include <linux/version.h>' \
+            "$DKMS_SRC/common/inc/nv-time.h"
+    fi
+    sed -i '/#define NV_MAX_ISR_DELAY_US/i\
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 11, 0)\
+#define in_hardirq in_irq\
+#endif' "$DKMS_SRC/common/inc/nv-time.h"
+    sed -i 's/in_irq()/in_hardirq()/g' "$DKMS_SRC/common/inc/nv-time.h"
+    log "    nv-time.h patched"
+
+    # os-interface.c: in_irq → in_hardirq
+    sed -i 's/in_irq()/in_hardirq()/g' "$DKMS_SRC/nvidia/os-interface.c"
+    log "    os-interface.c patched"
+
+    # nv-dma.c: map_resource → map_phys (>= 6.19)
+    if ! grep -q '<linux/version.h>' "$DKMS_SRC/nvidia/nv-dma.c"; then
+        sed -i '/#include "nv-reg.h"/a #include <linux/version.h>' \
+            "$DKMS_SRC/nvidia/nv-dma.c"
+    fi
+    sed -i 's/return (ops->map_resource != NULL);/#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 19, 0)\n    return (ops->map_phys != NULL);\n#else\n    return (ops->map_resource != NULL);\n#endif/' \
+        "$DKMS_SRC/nvidia/nv-dma.c"
+    log "    nv-dma.c patched"
+
+    # nv-memdbg.h: empty macros → while(0) to avoid -Wempty-body
+    sed -i 's/^#define NV_MEMDBG_ADD(ptr, size) *$/#define NV_MEMDBG_ADD(ptr, size) while(0)/' \
+        "$DKMS_SRC/common/inc/nv-memdbg.h"
+    sed -i 's/^#define NV_MEMDBG_REMOVE(ptr, size) *$/#define NV_MEMDBG_REMOVE(ptr, size) while(0)/' \
+        "$DKMS_SRC/common/inc/nv-memdbg.h"
+    log "    nv-memdbg.h patched"
+
+    # nvidia-drm-priv.h: add drm_print.h (removed from drm_mm.h in 6.19+)
+    if ! grep -q 'drm/drm_print.h' "$DKMS_SRC/nvidia-drm/nvidia-drm-priv.h"; then
+        sed -i '/#include "nvidia-drm-os-interface.h"/i #include <drm/drm_print.h>' \
+            "$DKMS_SRC/nvidia-drm/nvidia-drm-priv.h"
+    fi
+    log "    nvidia-drm-priv.h patched"
+
+    # conftest.sh: -fms-extensions (kernel 6.19+ uses MS extensions in headers)
+    sed -i 's/BASE_CFLAGS="-std=gnu17 -O2/BASE_CFLAGS="-std=gnu17 -fms-extensions -O2/' \
+        "$DKMS_SRC/conftest.sh"
+    # conftest.sh: _Generic vm_flags check (replaces offsetof __vm_flags)
+    if grep -q 'offsetof(struct vm_area_struct, __vm_flags)' "$DKMS_SRC/conftest.sh"; then
+        perl -i -pe 's/return offsetof\(struct vm_area_struct, __vm_flags\);/struct vm_area_struct vma;\n                return _Generic(\&vma.vm_flags, const typeof(vma.vm_flags) *: 1);/' \
+            "$DKMS_SRC/conftest.sh"
+    fi
+    log "    conftest.sh patched"
 
     # --------------------------------------------------------------
     # Kernel 7.0-specific fixes (NOT in any Arch patch)
