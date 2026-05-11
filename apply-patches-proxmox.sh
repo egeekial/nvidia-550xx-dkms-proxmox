@@ -2,7 +2,10 @@
 # apply-patches-proxmox.sh
 #
 # Patches NVIDIA 550.163.01 DKMS source to compile on Proxmox VE 9
-# with Linux kernel 7.0.0-3-pve.
+# with Linux kernel 7.0.2-2-pve.
+#
+# This Proxmox helper script was created with Claude Code. Review it before
+# running it on a production host.
 #
 # Applies:
 #   - Arch Linux AUR patches (cover kernel 6.15 → 6.19 API changes)
@@ -24,7 +27,7 @@ set -euo pipefail
 DKMS_SRC="/usr/src/nvidia-current-550.163.01"
 DKMS_MODULE="nvidia-current"
 DKMS_VERSION="550.163.01"
-KERNEL_VERSION="${KERNEL_VERSION:-7.0.0-3-pve}"
+KERNEL_VERSION="${KERNEL_VERSION:-7.0.2-2-pve}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ARCH_PATCHES="$SCRIPT_DIR"
