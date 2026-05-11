@@ -20,6 +20,9 @@ This is a narrow compatibility patch set, not a general NVIDIA driver installer.
 - Default target kernel: `7.0.2-2-pve`
 - Primary target distribution: Proxmox VE 9
 
+This may also work on vanilla Debian systems that use the same
+`nvidia-current` DKMS source layout, but that is untested.
+
 The script makes in-place changes under `/usr/src`, rebuilds DKMS modules, and
 updates initramfs. Review it before running it on a host you care about.
 
@@ -140,6 +143,9 @@ This repository is unofficial and is not affiliated with NVIDIA, Proxmox, Debian
 or Arch Linux. Kernel and proprietary driver internals change often; use this
 only for the exact driver/kernel combination it targets unless you are prepared
 to debug DKMS build failures.
+
+I provide no support for this repository, including troubleshooting,
+compatibility requests, or help recovering broken driver installs.
 
 The Proxmox helper script in this repository was created with Claude Code. Treat
 it as generated automation: review it before running it on a production host.
