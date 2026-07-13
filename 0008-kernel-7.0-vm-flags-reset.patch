@@ -1,0 +1,26 @@
+--- /usr/src/nvidia-current-550.163.01/common/inc/nv-mm.h	2026-03-15 13:23:05.000000000 -0600
++++ /tmp/nv-mm.test.v1	2026-07-13 01:04:29.343961740 -0600
+@@ -313,7 +313,11 @@
+ #if defined(NV_VMA_FLAGS_SET_WORD_PRESENT)
+     vma_flags_set_word(&vma->flags, flags);
+ #else
++    #if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
++    vm_flags_reset(vma, vma->vm_flags | flags);
++    #else
+     ACCESS_PRIVATE(vma, __vm_flags) |= flags;
++    #endif
+ #endif
+ }
+ 
+@@ -323,7 +327,11 @@
+ #if defined(NV_VMA_FLAGS_SET_WORD_PRESENT)
+     vma_flags_clear_word(&vma->flags, flags);
+ #else
++    #if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
++    vm_flags_reset(vma, vma->vm_flags & ~flags);
++    #else
+     ACCESS_PRIVATE(vma, __vm_flags) &= ~flags;
++    #endif
+ #endif
+ }
+ #endif // !NV_CAN_CALL_VMA_START_WRITE
