@@ -30,8 +30,14 @@ updates initramfs. Review it before running it on a host you care about.
 
 - `PKGBUILD`, `.SRCINFO`, and support files: Arch/AUR packaging for the NVIDIA
   550 branch.
-- `0002` through `0006` patch files: compatibility patches for GCC 15 and Linux
-  kernel API changes in the 6.15, 6.17, and 6.19 range.
+- `0002` through `0007` patch files: compatibility patches for GCC 15 and Linux
+  kernel API changes in the 6.15, 6.17, 6.19, and 7.0 range.
+  - Patch 0007 (`fix-dma-fence-signal-semantics`) corrects the
+    `dma_fence_signal`/`dma_fence_signal_locked` return semantics: the kernel 7.0
+    API change made these return `void`; a naive sed fix (`return 0;`) always
+    returns success regardless of fence state. Patch 0007 uses
+    `READ_ONCE(fence->seqno) == fence->signaled` to preserve the signal-state
+    contract callers depend on.
 - `apply-patches-proxmox.sh`: Proxmox-focused patch and rebuild helper. It
   reuses the AUR patch logic where possible and adds kernel 7.0 fixes for VMA
   locking, `__vm_flags` removal, DRM atomic state changes, and DKMS build
@@ -94,8 +100,8 @@ The patch flow includes:
 - Linux 6.15 timer and VMA flag compatibility changes.
 - Linux 6.17 DRM `fb_create` handling, where needed.
 - Linux 6.19 `in_hardirq`, `map_phys`, `drm_print`, and conftest updates.
-- Linux 7.0 Proxmox-specific fixes for VMA locking and NVIDIA DRM helper build
-  failures.
+- Linux 7.0 Proxmox-specific fixes for VMA locking, `__vm_flags` removal,
+  DRM atomic state changes, and `dma_fence_signal` signal-state semantics.
 
 ## Arch Linux Notes
 

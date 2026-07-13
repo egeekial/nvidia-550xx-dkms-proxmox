@@ -189,11 +189,14 @@ apply_patches() {
     fi
     log "    conftest.sh patched"
 
-    # nvidia-dma-fence-helper.h: dma_fence_signal returns void in 7.0
-    sed -i 's/return dma_fence_signal(fence);/dma_fence_signal(fence);\n    return 0;/' \
-        "$DKMS_SRC/nvidia-drm/nvidia-dma-fence-helper.h"
-    sed -i 's/return dma_fence_signal_locked(fence);/dma_fence_signal_locked(fence);\n    return 0;/' \
-        "$DKMS_SRC/nvidia-drm/nvidia-dma-fence-helper.h"
+    # nvidia-dma-fence-helper.h: kernel 7.0+ made dma_fence_signal(_locked)
+    # return void. The old sed-based fix ("return 0;") always returned success
+    # regardless of fence state, silently dropping error propagation. Replace
+    # with a proper patch that preserves signal-state semantics via
+    # READ_ONCE(seqno)==signaled.
+    log "  0007 (patch): fix dma_fence_signal/signal_locked return semantics"
+    patch -Np1 --no-backup-if-mismatch -d "$DKMS_SRC" \
+        < "$ARCH_PATCHES/0007-kernel-7.0-fix-dma-fence-signal-semantics.patch"
     log "    nvidia-dma-fence-helper.h patched"
 
     # nvidia-drm-helper.h: .state → .new_state in DRM atomic macros
