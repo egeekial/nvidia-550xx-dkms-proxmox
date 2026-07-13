@@ -227,11 +227,19 @@ apply_patches() {
         sed -i '1i\#include <linux/version.h>' "$NV_MM_H"
     fi
 
-    # Replace nv_vm_flags_set body
-    perl -i -pe 's/^(\s*)ACCESS_PRIVATE\(vma, __vm_flags\) \|= flags;/${1}#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)\n${1}vm_flags_reset(vma, vma->vm_flags | flags);\n${1}#else\n${1}ACCESS_PRIVATE(vma, __vm_flags) |= flags;\n${1}#endif/' "$NV_MM_H"
+    # Replace nv_vm_flags_set body — idempotent: check for vm_flags_reset already present
+    if ! grep -q 'vm_flags_reset.*vm_flags | flags' "$NV_MM_H"; then
+        perl -i -pe 's/^(\s*)ACCESS_PRIVATE\(vma, __vm_flags\) \|= flags;/${1}#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)\n${1}vm_flags_reset(vma, vma->vm_flags | flags);\n${1}#else\n${1}ACCESS_PRIVATE(vma, __vm_flags) |= flags;\n${1}#endif/' "$NV_MM_H"
+    else
+        log "    nv_vm_flags_set already patched — skipping"
+    fi
 
-    # Replace nv_vm_flags_clear body
-    perl -i -pe 's/^(\s*)ACCESS_PRIVATE\(vma, __vm_flags\) &= ~flags;/${1}#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)\n${1}vm_flags_reset(vma, vma->vm_flags \& ~flags);\n${1}#else\n${1}ACCESS_PRIVATE(vma, __vm_flags) \&= ~flags;\n${1}#endif/' "$NV_MM_H"
+    # Replace nv_vm_flags_clear body — idempotent: check for vm_flags_reset already present
+    if ! grep -q 'vm_flags_reset.*vm_flags & ~flags' "$NV_MM_H"; then
+        perl -i -pe 's/^(\s*)ACCESS_PRIVATE\(vma, __vm_flags\) &= ~flags;/${1}#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)\n${1}vm_flags_reset(vma, vma->vm_flags \& ~flags);\n${1}#else\n${1}ACCESS_PRIVATE(vma, __vm_flags) \&= ~flags;\n${1}#endif/' "$NV_MM_H"
+    else
+        log "    nv_vm_flags_clear already patched — skipping"
+    fi
 
     # Verify
     if grep -q 'ACCESS_PRIVATE(vma, __vm_flags)' "$NV_MM_H"; then
